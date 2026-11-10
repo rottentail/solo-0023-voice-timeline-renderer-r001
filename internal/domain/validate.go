@@ -12,6 +12,7 @@ type SourceFacts struct {
 	SampleRate    int
 	Channels      int
 	BitsPerSample int
+	SampleFormat  string
 	FrameCount    int64
 }
 
@@ -35,18 +36,56 @@ func ValidateName(value string) error {
 	return nil
 }
 
+// NormalizeSourceFacts fills defaults used when reading records written before
+// sample formats were tracked. Legacy media is always 16-bit integer PCM.
+func NormalizeSourceFacts(facts *SourceFacts) {
+	if facts.SampleFormat == "" {
+		facts.SampleFormat = SampleFormatPCMInteger
+	}
+	if facts.BitsPerSample == 0 {
+		facts.BitsPerSample = OutputWidth16
+	}
+}
+
 func ValidateSourceFacts(field string, facts SourceFacts) error {
+	NormalizeSourceFacts(&facts)
 	if facts.SampleRate < 8000 || facts.SampleRate > 192000 {
 		return E(KindInvalid, "invalid_sample_rate", field+".sample_rate", "sample rate must be between 8000 and 192000")
 	}
 	if facts.Channels != 1 && facts.Channels != 2 {
 		return E(KindInvalid, "invalid_channels", field+".channels", "source channels must be mono or stereo")
 	}
-	if facts.BitsPerSample != 16 {
-		return E(KindInvalid, "invalid_sample_format", field+".bits_per_sample", "source samples must use 16-bit integer PCM")
+	switch facts.SampleFormat {
+	case SampleFormatPCMInteger:
+		if facts.BitsPerSample != OutputWidth16 && facts.BitsPerSample != OutputWidth24 {
+			return E(KindInvalid, "invalid_sample_format", field+".bits_per_sample", "integer PCM sources must use 16-bit or 24-bit samples")
+		}
+	case SampleFormatIEEEFloat:
+		if facts.BitsPerSample != 32 {
+			return E(KindInvalid, "invalid_sample_format", field+".bits_per_sample", "floating point sources must use 32-bit IEEE float samples")
+		}
+	default:
+		return E(KindInvalid, "invalid_sample_format", field+".sample_format", "source sample format must be pcm_integer or ieee_float")
 	}
 	if facts.FrameCount < 1 {
 		return E(KindInvalid, "empty_source", field+".frame_count", "source must contain at least one frame")
+	}
+	return nil
+}
+
+// NormalizeOutputWidth applies the legacy default of 16-bit output when an
+// older timeline record omits the output width.
+func NormalizeOutputWidth(width int) int {
+	if width == 0 {
+		return OutputWidth16
+	}
+	return width
+}
+
+func ValidateOutputWidth(field string, width int) error {
+	width = NormalizeOutputWidth(width)
+	if width != OutputWidth16 && width != OutputWidth24 {
+		return E(KindInvalid, "invalid_output_width", field, "render output must use 16-bit or 24-bit integer PCM")
 	}
 	return nil
 }
@@ -63,6 +102,9 @@ func ValidateTimeline(plan Timeline, sources map[string]SourceAsset, maxSpans in
 	}
 	if plan.OutputChannels != 1 && plan.OutputChannels != 2 {
 		return E(KindInvalid, "invalid_channels", "output_channels", "output channels must be one or two")
+	}
+	if err := ValidateOutputWidth("output_bits_per_sample", plan.OutputBitsPerSample); err != nil {
+		return err
 	}
 	if plan.TargetPeakDBFS < -24 || plan.TargetPeakDBFS > -0.1 {
 		return E(KindInvalid, "invalid_target_peak", "target_peak_dbfs", "target peak must be between -24 and -0.1 dBFS")

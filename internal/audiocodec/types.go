@@ -1,5 +1,19 @@
 package audiocodec
 
+// Sample format identifiers carried alongside the bit width so callers can
+// distinguish integer PCM from IEEE float at the same or different widths.
+const (
+	FormatPCMInteger = "pcm_integer"
+	FormatIEEEFloat  = "ieee_float"
+)
+
+// Accepted source and output widths.
+const (
+	pcmBitWidth16 = 16
+	pcmBitWidth24 = 24
+	floatBitWidth = 32
+)
+
 type Clip struct {
 	SampleRate int
 	Channels   int
@@ -17,6 +31,7 @@ type WAVInfo struct {
 	SampleRate    int
 	Channels      int
 	BitsPerSample int
+	SampleFormat  string
 	FrameCount    int64
 	ByteCount     int64
 }

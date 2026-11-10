@@ -52,6 +52,13 @@ func (repo *Repository) GetSourceMeta(id string) (domain.SourceAsset, error) {
 		}
 		return domain.SourceAsset{}, domain.Wrap(domain.KindInternal, "storage_error", "", "cannot read source metadata", err)
 	}
+	// Records written before multi-format support are always 16-bit PCM.
+	if asset.SampleFormat == "" {
+		asset.SampleFormat = domain.SampleFormatPCMInteger
+	}
+	if asset.BitsPerSample == 0 {
+		asset.BitsPerSample = domain.OutputWidth16
+	}
 	return asset, nil
 }
 

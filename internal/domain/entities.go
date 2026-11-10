@@ -2,6 +2,18 @@ package domain
 
 import "time"
 
+// Sample format identifiers shared with the codec and HTTP layers.
+const (
+	SampleFormatPCMInteger = "pcm_integer"
+	SampleFormatIEEEFloat  = "ieee_float"
+)
+
+// Supported integer PCM output widths.
+const (
+	OutputWidth16 = 16
+	OutputWidth24 = 24
+)
+
 type SourceAsset struct {
 	ID            string    `json:"id"`
 	Name          string    `json:"name"`
@@ -10,6 +22,7 @@ type SourceAsset struct {
 	SampleRate    int       `json:"sample_rate"`
 	Channels      int       `json:"channels"`
 	BitsPerSample int       `json:"bits_per_sample"`
+	SampleFormat  string    `json:"sample_format"`
 	FrameCount    int64     `json:"frame_count"`
 	DurationMS    int64     `json:"duration_ms"`
 	PeakDBFS      float64   `json:"peak_dbfs"`
@@ -26,15 +39,16 @@ type TimelineSpan struct {
 }
 
 type Timeline struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	SampleRate     int            `json:"sample_rate"`
-	OutputChannels int            `json:"output_channels"`
-	TargetPeakDBFS float64        `json:"target_peak_dbfs"`
-	Spans          []TimelineSpan `json:"spans"`
-	State          string         `json:"state"`
-	OutputFrames   int64          `json:"output_frames"`
-	CreatedAt      time.Time      `json:"created_at"`
+	ID                  string         `json:"id"`
+	Name                string         `json:"name"`
+	SampleRate          int            `json:"sample_rate"`
+	OutputChannels      int            `json:"output_channels"`
+	OutputBitsPerSample int            `json:"output_bits_per_sample"`
+	TargetPeakDBFS      float64        `json:"target_peak_dbfs"`
+	Spans               []TimelineSpan `json:"spans"`
+	State               string         `json:"state"`
+	OutputFrames        int64          `json:"output_frames"`
+	CreatedAt           time.Time      `json:"created_at"`
 }
 
 type RenderState string
@@ -53,6 +67,7 @@ type OutputAsset struct {
 	SampleRate    int     `json:"sample_rate"`
 	Channels      int     `json:"channels"`
 	BitsPerSample int     `json:"bits_per_sample"`
+	SampleFormat  string  `json:"sample_format"`
 	FrameCount    int64   `json:"frame_count"`
 	DurationMS    int64   `json:"duration_ms"`
 	PeakDBFS      float64 `json:"peak_dbfs"`
@@ -71,17 +86,19 @@ type RenderJob struct {
 }
 
 type ReceiptSpan struct {
-	Index            int     `json:"index"`
-	SourceID         string  `json:"source_id"`
-	SourceDigest     string  `json:"source_digest"`
-	SourceStartFrame int64   `json:"source_start_frame"`
-	SourceEndFrame   int64   `json:"source_end_frame"`
-	OutputStartFrame int64   `json:"output_start_frame"`
-	OutputEndFrame   int64   `json:"output_end_frame"`
-	OutputFrames     int64   `json:"output_frames"`
-	CrossfadeFrames  int64   `json:"crossfade_frames"`
-	GainDB           float64 `json:"gain_db"`
-	ChannelAction    string  `json:"channel_action"`
+	Index               int     `json:"index"`
+	SourceID            string  `json:"source_id"`
+	SourceDigest        string  `json:"source_digest"`
+	SourceBitsPerSample int     `json:"source_bits_per_sample"`
+	SourceSampleFormat  string  `json:"source_sample_format"`
+	SourceStartFrame    int64   `json:"source_start_frame"`
+	SourceEndFrame      int64   `json:"source_end_frame"`
+	OutputStartFrame    int64   `json:"output_start_frame"`
+	OutputEndFrame      int64   `json:"output_end_frame"`
+	OutputFrames        int64   `json:"output_frames"`
+	CrossfadeFrames     int64   `json:"crossfade_frames"`
+	GainDB              float64 `json:"gain_db"`
+	ChannelAction       string  `json:"channel_action"`
 }
 
 type NormalizationReceipt struct {

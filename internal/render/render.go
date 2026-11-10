@@ -42,7 +42,8 @@ func Render(
 		return Result{}, err
 	}
 	normalized := normalizePeak(mix, plan.TargetPeakDBFS)
-	encoded, err := audiocodec.EncodePCM16(plan.SampleRate, plan.OutputChannels, normalized.Samples)
+	outputWidth := domain.NormalizeOutputWidth(plan.OutputBitsPerSample)
+	encoded, err := encodeOutput(plan.SampleRate, plan.OutputChannels, outputWidth, normalized.Samples)
 	if err != nil {
 		return Result{}, err
 	}
@@ -51,4 +52,15 @@ func Render(
 		return Result{}, err
 	}
 	return Result{WAV: encoded, Receipt: receipt, Output: output}, nil
+}
+
+func encodeOutput(sampleRate, channels, bitsPerSample int, samples []float32) ([]byte, error) {
+	switch bitsPerSample {
+	case domain.OutputWidth16:
+		return audiocodec.EncodePCM16(sampleRate, channels, samples)
+	case domain.OutputWidth24:
+		return audiocodec.EncodePCM24(sampleRate, channels, samples)
+	default:
+		return nil, errors.New("render output must use 16-bit or 24-bit integer PCM")
+	}
 }

@@ -4,12 +4,23 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 )
 
 const (
-	pcmFormatCode = 1
-	pcmBitWidth   = 16
+	pcmFormatCode    = 1
+	ieeeFormatCode   = 3
+	extFormatCode    = 0xFFFE
+	pcmSubformatTag  = 0x0001
+	ieeeSubformatTag = 0x0003
 )
+
+// KSDATAFORMAT_SUBTYPE_PCM and KSDATAFORMAT_SUBTYPE_IEEE_FLOAT share this
+// 14-byte tail; only the first two bytes carry the format tag.
+var subformatTail = [14]byte{
+	0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+	0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
+}
 
 func DecodeWAV(data []byte) (*Clip, WAVInfo, error) {
 	if len(data) < 12 {
@@ -60,11 +71,9 @@ func DecodeWAV(data []byte) (*Clip, WAVInfo, error) {
 	blockAlign := int(binary.LittleEndian.Uint16(formatChunk[12:14]))
 	bitsPerSample := int(binary.LittleEndian.Uint16(formatChunk[14:16]))
 
-	if audioFormat != pcmFormatCode {
-		return nil, WAVInfo{}, fmt.Errorf("unsupported WAV format code %d", audioFormat)
-	}
-	if bitsPerSample != pcmBitWidth {
-		return nil, WAVInfo{}, fmt.Errorf("unsupported PCM width %d", bitsPerSample)
+	effectiveTag, validBits, err := resolveFormat(audioFormat, bitsPerSample, formatChunk)
+	if err != nil {
+		return nil, WAVInfo{}, err
 	}
 	if channels != 1 && channels != 2 {
 		return nil, WAVInfo{}, fmt.Errorf("unsupported channel count %d", channels)
@@ -84,25 +93,117 @@ func DecodeWAV(data []byte) (*Clip, WAVInfo, error) {
 		return nil, WAVInfo{}, errors.New("sample data is empty or not frame-aligned")
 	}
 
-	samples := make([]float32, len(sampleChunk)/2)
-	for index := range samples {
-		raw := int16(binary.LittleEndian.Uint16(sampleChunk[index*2 : index*2+2]))
-		if raw < 0 {
-			samples[index] = float32(raw) / 32768
-		} else {
-			samples[index] = float32(raw) / 32767
+	sampleFormat := FormatPCMInteger
+	switch effectiveTag {
+	case pcmSubformatTag:
+		if validBits != 16 && validBits != 24 {
+			return nil, WAVInfo{}, fmt.Errorf("unsupported integer PCM width %d", validBits)
 		}
+		if validBits != bitsPerSample {
+			return nil, WAVInfo{}, errors.New("container width does not match the valid sample bits")
+		}
+		sampleFormat = FormatPCMInteger
+	case ieeeSubformatTag:
+		if validBits != floatBitWidth || bitsPerSample != floatBitWidth {
+			return nil, WAVInfo{}, fmt.Errorf("unsupported floating point width %d", validBits)
+		}
+		sampleFormat = FormatIEEEFloat
+	default:
+		return nil, WAVInfo{}, fmt.Errorf("unsupported WAV format code %d", effectiveTag)
+	}
+
+	samples, err := decodeSamples(effectiveTag, bitsPerSample, sampleChunk)
+	if err != nil {
+		return nil, WAVInfo{}, err
 	}
 	frameCount := int64(len(samples) / channels)
 	return &Clip{
-		SampleRate: sampleRate,
-		Channels:   channels,
-		Samples:    samples,
-	}, WAVInfo{
-		SampleRate:    sampleRate,
-		Channels:      channels,
-		BitsPerSample: bitsPerSample,
-		FrameCount:    frameCount,
-		ByteCount:     int64(len(data)),
-	}, nil
+			SampleRate: sampleRate,
+			Channels:   channels,
+			Samples:    samples,
+		}, WAVInfo{
+			SampleRate:    sampleRate,
+			Channels:      channels,
+			BitsPerSample: bitsPerSample,
+			SampleFormat:  sampleFormat,
+			FrameCount:    frameCount,
+			ByteCount:     int64(len(data)),
+		}, nil
+}
+
+func resolveFormat(audioFormat uint16, bitsPerSample int, formatChunk []byte) (uint16, int, error) {
+	switch audioFormat {
+	case pcmFormatCode:
+		return pcmSubformatTag, bitsPerSample, nil
+	case ieeeFormatCode:
+		return ieeeSubformatTag, bitsPerSample, nil
+	case extFormatCode:
+		if len(formatChunk) < 40 {
+			return 0, 0, errors.New("extensible fmt chunk is too short")
+		}
+		validBits := int(binary.LittleEndian.Uint16(formatChunk[18:20]))
+		subformat := formatChunk[24:40]
+		var tail [14]byte
+		copy(tail[:], subformat[2:16])
+		if tail != subformatTail {
+			return 0, 0, errors.New("unsupported extensible subformat GUID")
+		}
+		tag := binary.LittleEndian.Uint16(subformat[0:2])
+		if tag != pcmSubformatTag && tag != ieeeSubformatTag {
+			return 0, 0, fmt.Errorf("unsupported extensible format tag %d", tag)
+		}
+		return tag, validBits, nil
+	default:
+		return 0, 0, fmt.Errorf("unsupported WAV format code %d", audioFormat)
+	}
+}
+
+func decodeSamples(tag uint16, bitsPerSample int, chunk []byte) ([]float32, error) {
+	switch tag {
+	case pcmSubformatTag:
+		switch bitsPerSample {
+		case pcmBitWidth16:
+			samples := make([]float32, len(chunk)/2)
+			for index := range samples {
+				raw := int16(binary.LittleEndian.Uint16(chunk[index*2 : index*2+2]))
+				if raw < 0 {
+					samples[index] = float32(raw) / 32768
+				} else {
+					samples[index] = float32(raw) / 32767
+				}
+			}
+			return samples, nil
+		case pcmBitWidth24:
+			samples := make([]float32, len(chunk)/3)
+			for index := range samples {
+				raw := int32(chunk[index*3]) |
+					int32(chunk[index*3+1])<<8 |
+					int32(chunk[index*3+2])<<16
+				if raw&0x800000 != 0 {
+					raw |= ^0xFFFFFF
+				}
+				if raw < 0 {
+					samples[index] = float32(raw) / 8388608
+				} else {
+					samples[index] = float32(raw) / 8388607
+				}
+			}
+			return samples, nil
+		default:
+			return nil, fmt.Errorf("unsupported integer PCM width %d", bitsPerSample)
+		}
+	case ieeeSubformatTag:
+		samples := make([]float32, len(chunk)/4)
+		for index := range samples {
+			bits := binary.LittleEndian.Uint32(chunk[index*4 : index*4+4])
+			value := math.Float32frombits(bits)
+			if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+				return nil, errors.New("floating point samples must be finite")
+			}
+			samples[index] = value
+		}
+		return samples, nil
+	default:
+		return nil, errors.New("unsupported sample coding")
+	}
 }

@@ -32,5 +32,7 @@ func (repo *Repository) GetTimeline(id string) (domain.Timeline, error) {
 		}
 		return domain.Timeline{}, domain.Wrap(domain.KindInternal, "storage_error", "", "cannot read timeline", err)
 	}
+	// Timelines written before output width selection always rendered 16-bit.
+	plan.OutputBitsPerSample = domain.NormalizeOutputWidth(plan.OutputBitsPerSample)
 	return plan, nil
 }

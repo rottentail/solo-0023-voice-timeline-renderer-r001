@@ -1,10 +1,14 @@
 package storage
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
+	"voice-timeline-renderer/internal/audiocodec"
 	"voice-timeline-renderer/internal/domain"
 )
 
@@ -79,5 +83,36 @@ func (repo *Repository) GetRenderOutput(id string) ([]byte, domain.RenderReceipt
 		}
 		return nil, domain.RenderReceipt{}, domain.Wrap(domain.KindInternal, "storage_error", "", "cannot read render output", err)
 	}
+	if err := verifyPublishedOutput(receipt, payload); err != nil {
+		return nil, domain.RenderReceipt{}, domain.Wrap(domain.KindInternal, "output_integrity_error", "render_id", "published render output does not match its receipt", err)
+	}
 	return payload, receipt, nil
+}
+
+// verifyPublishedOutput re-checks the downloadable WAV against the receipt so
+// callers always observe consistent format and precision facts. A mismatch is
+// treated as an internal integrity failure instead of serving the bytes.
+func verifyPublishedOutput(receipt domain.RenderReceipt, payload []byte) error {
+	digest := sha256.Sum256(payload)
+	if hex.EncodeToString(digest[:]) != receipt.Output.Digest {
+		return errors.New("output digest does not match the render receipt")
+	}
+	_, info, err := audiocodec.DecodeWAV(payload)
+	if err != nil {
+		return fmt.Errorf("output is not a decodable WAV: %w", err)
+	}
+	expectedFormat := receipt.Output.SampleFormat
+	if expectedFormat == "" {
+		expectedFormat = domain.SampleFormatPCMInteger
+	}
+	if info.SampleFormat != expectedFormat {
+		return errors.New("output sample format does not match the render receipt")
+	}
+	if info.BitsPerSample != receipt.Output.BitsPerSample ||
+		info.SampleRate != receipt.Output.SampleRate ||
+		info.Channels != receipt.Output.Channels ||
+		info.FrameCount != receipt.Output.FrameCount {
+		return errors.New("output WAV header does not match the render receipt")
+	}
+	return nil
 }

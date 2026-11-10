@@ -27,6 +27,8 @@ func Run(ctx context.Context, workflow string) error {
 		return runCompose(ctx, harness)
 	case "render-mixdown":
 		return runRender(ctx, harness)
+	case "render-high-precision":
+		return runHighPrecision(ctx, harness)
 	default:
 		return fmt.Errorf("unknown workflow %q", workflow)
 	}
@@ -93,7 +95,7 @@ func runCompose(ctx context.Context, harness *Harness) error {
 		{SourceID: "source_compose_a", SourceStartFrame: 0, SourceEndFrame: 14400, GainDB: -3, CrossfadeFrames: 0},
 		{SourceID: "source_compose_b", SourceStartFrame: 0, SourceEndFrame: 11025, GainDB: 1, CrossfadeFrames: 2400},
 	}
-	plan, status, err := harness.createTimeline(ctx, "timeline_compose_01", "two span assembly", 48000, 2, -1, validSpans)
+	plan, status, err := harness.createTimeline(ctx, "timeline_compose_01", "two span assembly", 48000, 2, 16, -1, validSpans)
 	if err != nil {
 		return err
 	}
@@ -109,7 +111,7 @@ func runCompose(ctx context.Context, harness *Harness) error {
 	}
 	invalidSpans := append([]domain.TimelineSpan(nil), validSpans...)
 	invalidSpans[1].CrossfadeFrames = 999999
-	_, status, err = harness.createTimeline(ctx, "timeline_compose_bad", "invalid crossfade", 48000, 2, -1, invalidSpans)
+	_, status, err = harness.createTimeline(ctx, "timeline_compose_bad", "invalid crossfade", 48000, 2, 16, -1, invalidSpans)
 	if err != nil {
 		return err
 	}
@@ -138,7 +140,7 @@ func runRender(ctx context.Context, harness *Harness) error {
 		{SourceID: "source_render_a", SourceStartFrame: 0, SourceEndFrame: 19200, GainDB: -2, CrossfadeFrames: 0},
 		{SourceID: "source_render_b", SourceStartFrame: 0, SourceEndFrame: 15435, GainDB: 0, CrossfadeFrames: 4800},
 	}
-	plan, status, err := harness.createTimeline(ctx, "timeline_render_01", "crossfaded narration", 48000, 2, -1, spans)
+	plan, status, err := harness.createTimeline(ctx, "timeline_render_01", "crossfaded narration", 48000, 2, 16, -1, spans)
 	if err != nil {
 		return err
 	}

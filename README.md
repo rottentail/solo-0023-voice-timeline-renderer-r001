@@ -7,12 +7,19 @@ and records every render transition.
 
 The implementation covers:
 
-- 16-bit integer PCM WAV validation and signal measurement.
+- 16-bit and 24-bit integer PCM, plus 32-bit IEEE float WAV validation and
+  signal measurement (including `WAVE_FORMAT_EXTENSIBLE` containers).
+- Mixed-precision timelines whose sources may use any accepted source format.
+- Render output selectable as 16-bit or 24-bit integer PCM per timeline, with
+  16-bit remaining the default for backward compatibility.
 - Ordered timeline spans with source-frame selection, gain, and crossfade.
 - Linear sample-rate conversion and mono/stereo channel mapping.
 - Equal-power neighboring-span crossfades.
 - Peak normalization into a requested dBFS target.
 - Durable render states, receipts, and atomically committed output folders.
+- Source precision facts (`sample_format`, `bits_per_sample`) carried through
+  source metadata, per-span receipt records, the output WAV header, and
+  verified again before any output download.
 
 Automated tests are intentionally deferred. A later task stage will add unit,
 integration, and end-to-end verification around the production interfaces.
@@ -78,6 +85,7 @@ Response:
   "sample_rate": 48000,
   "channels": 1,
   "bits_per_sample": 16,
+  "sample_format": "pcm_integer",
   "frame_count": 48000,
   "duration_ms": 1000,
   "peak_dbfs": -8.0,
@@ -85,6 +93,16 @@ Response:
   "created_at": "2026-11-09T12:00:00Z"
 }
 ```
+
+Accepted source payloads are mono or stereo RIFF/WAVE files using one of:
+
+- 16-bit integer PCM (`"sample_format": "pcm_integer"`, `bits_per_sample: 16`)
+- 24-bit integer PCM (`"sample_format": "pcm_integer"`, `bits_per_sample: 24`)
+- 32-bit IEEE float (`"sample_format": "ieee_float"`, `bits_per_sample: 32`)
+
+Floating point samples must be finite; NaN and infinite values are rejected.
+Any other width or coding returns the `invalid_wav` error and leaves no visible
+source.
 
 ### Compose a timeline
 
@@ -95,6 +113,7 @@ Response:
   "name": "two part narration",
   "sample_rate": 48000,
   "output_channels": 2,
+  "output_bits_per_sample": 24,
   "target_peak_dbfs": -1,
   "spans": [
     {
@@ -115,6 +134,15 @@ Response:
 }
 ```
 
+`output_bits_per_sample` selects the rendered WAV width and must be `16` or
+`24`. Omitting it defaults to `16`, so timelines written against the original
+service render exactly as before. An unsupported value (for example `32`)
+returns `invalid_output_width` and no timeline or render is persisted. Spans
+may freely mix 16-bit PCM, 24-bit PCM, and 32-bit float sources; each receipt
+span records the source's original `source_sample_format` and
+`source_bits_per_sample`, and down-mixing to a narrower output adds a
+non-fatal precision warning.
+
 Spans are sequential. A later span overlaps its predecessor by
 `crossfade_frames`; the overlap is mixed with equal-power weights. A crossfade
 must fit within both neighboring spans.
@@ -132,7 +160,11 @@ must fit within both neighboring spans.
 The render runs through the durable states
 `queued -> rendering -> finalizing -> completed`. A failed render records a
 terminal `failed` state with a stable error code and does not expose a partial
-output folder.
+output folder. Before a render completes, the encoded WAV is decoded again and
+its sample format, bit width, sample rate, channels, and frame count are
+checked against the timeline; any mismatch aborts the render, so a successful
+job can never point at a wrong-format downloadable file. Re-rendering the same
+timeline produces byte-identical audio and the same format conclusions.
 
 ### Read resources
 
@@ -142,9 +174,13 @@ output folder.
 - `GET /v1/renders/{render_id}/receipt`
 - `GET /v1/renders/{render_id}/output`
 
-The output route returns `audio/wav`. The receipt records source digests, span
-placement, channel mapping, measured peak and RMS amplitude, normalization
-gain, output digest, and non-fatal warnings.
+The output route returns `audio/wav`. The receipt records source digests and
+per-span source precision (`source_sample_format`, `source_bits_per_sample`),
+span placement, channel mapping, measured peak and RMS amplitude,
+normalization gain, output digest and output format facts, precision warnings,
+and non-fatal warnings. On every download the service re-verifies the output
+digest and WAV header against the receipt; a corrupted or mismatched file is
+refused with `output_integrity_error` instead of being served.
 
 ## Data directory
 
@@ -187,11 +223,16 @@ Run each declared production check from the repository root:
 go run ./cmd/timelinecheck -workflow ingest-audio-source
 go run ./cmd/timelinecheck -workflow compose-timeline
 go run ./cmd/timelinecheck -workflow render-mixdown
+go run ./cmd/timelinecheck -workflow render-high-precision
 ```
 
 Each check creates an isolated temporary data directory, starts the real HTTP
 handler, sends generated WAV inputs, and verifies read-back or rendered output.
-The checks are bounded and do not require network access.
+The checks are bounded and do not require network access. The
+`render-high-precision` check registers 16-bit PCM, 24-bit PCM, and 32-bit
+float sources, renders mixed-precision timelines to both 24-bit and 16-bit
+outputs, verifies source/receipt/WAV format consistency and deterministic
+re-renders, and confirms unsupported widths are rejected without artifacts.
 
 ## Deferred test boundary
 

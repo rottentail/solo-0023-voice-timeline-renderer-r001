@@ -14,18 +14,20 @@ type SourceInput struct {
 }
 
 type preparedSpan struct {
-	Index            int
-	SourceID         string
-	SourceDigest     string
-	SourceStartFrame int64
-	SourceEndFrame   int64
-	OutputStartFrame int64
-	OutputEndFrame   int64
-	OutputFrames     int64
-	CrossfadeFrames  int64
-	GainDB           float64
-	ChannelAction    string
-	Clip             *audiocodec.Clip
+	Index               int
+	SourceID            string
+	SourceDigest        string
+	SourceBitsPerSample int
+	SourceSampleFormat  string
+	SourceStartFrame    int64
+	SourceEndFrame      int64
+	OutputStartFrame    int64
+	OutputEndFrame      int64
+	OutputFrames        int64
+	CrossfadeFrames     int64
+	GainDB              float64
+	ChannelAction       string
+	Clip                *audiocodec.Clip
 }
 
 func prepareSpans(
@@ -78,18 +80,20 @@ func prepareSpans(
 		cursor = end
 
 		prepared = append(prepared, preparedSpan{
-			Index:            index,
-			SourceID:         span.SourceID,
-			SourceDigest:     source.Asset.Digest,
-			SourceStartFrame: span.SourceStartFrame,
-			SourceEndFrame:   span.SourceEndFrame,
-			OutputStartFrame: start,
-			OutputEndFrame:   end,
-			OutputFrames:     frames,
-			CrossfadeFrames:  span.CrossfadeFrames,
-			GainDB:           span.GainDB,
-			ChannelAction:    action,
-			Clip:             mapped,
+			Index:               index,
+			SourceID:            span.SourceID,
+			SourceDigest:        source.Asset.Digest,
+			SourceBitsPerSample: source.Asset.BitsPerSample,
+			SourceSampleFormat:  source.Asset.SampleFormat,
+			SourceStartFrame:    span.SourceStartFrame,
+			SourceEndFrame:      span.SourceEndFrame,
+			OutputStartFrame:    start,
+			OutputEndFrame:      end,
+			OutputFrames:        frames,
+			CrossfadeFrames:     span.CrossfadeFrames,
+			GainDB:              span.GainDB,
+			ChannelAction:       action,
+			Clip:                mapped,
 		})
 	}
 	return prepared, cursor, nil

@@ -59,15 +59,17 @@ func (harness *Harness) createTimeline(
 	name string,
 	sampleRate int,
 	channels int,
+	outputBits int,
 	targetPeak float64,
 	spans []domain.TimelineSpan,
 ) (domain.Timeline, int, error) {
 	status, body, err := harness.requestJSON(ctx, "PUT", "/v1/timelines/"+id, service.TimelineWriteRequest{
-		Name:           name,
-		SampleRate:     sampleRate,
-		OutputChannels: channels,
-		TargetPeakDBFS: targetPeak,
-		Spans:          spans,
+		Name:                name,
+		SampleRate:          sampleRate,
+		OutputChannels:      channels,
+		OutputBitsPerSample: outputBits,
+		TargetPeakDBFS:      targetPeak,
+		Spans:               spans,
 	})
 	if err != nil {
 		return domain.Timeline{}, status, err

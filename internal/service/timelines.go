@@ -17,13 +17,14 @@ func (s *Service) CreateTimeline(ctx context.Context, id string, request Timelin
 		return domain.Timeline{}, false, err
 	}
 	candidate := domain.Timeline{
-		ID:             id,
-		Name:           strings.TrimSpace(request.Name),
-		SampleRate:     request.SampleRate,
-		OutputChannels: request.OutputChannels,
-		TargetPeakDBFS: request.TargetPeakDBFS,
-		Spans:          append([]domain.TimelineSpan(nil), request.Spans...),
-		State:          "validating",
+		ID:                  id,
+		Name:                strings.TrimSpace(request.Name),
+		SampleRate:          request.SampleRate,
+		OutputChannels:      request.OutputChannels,
+		OutputBitsPerSample: domain.NormalizeOutputWidth(request.OutputBitsPerSample),
+		TargetPeakDBFS:      request.TargetPeakDBFS,
+		Spans:               append([]domain.TimelineSpan(nil), request.Spans...),
+		State:               "validating",
 	}
 	existing, getErr := s.repo.GetTimeline(id)
 	if getErr == nil {
@@ -71,6 +72,7 @@ func equivalentTimeline(left, right domain.Timeline) bool {
 	if left.Name != right.Name ||
 		left.SampleRate != right.SampleRate ||
 		left.OutputChannels != right.OutputChannels ||
+		domain.NormalizeOutputWidth(left.OutputBitsPerSample) != domain.NormalizeOutputWidth(right.OutputBitsPerSample) ||
 		math.Abs(left.TargetPeakDBFS-right.TargetPeakDBFS) > 1e-9 ||
 		len(left.Spans) != len(right.Spans) {
 		return false

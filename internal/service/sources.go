@@ -51,7 +51,7 @@ func (s *Service) CreateSource(ctx context.Context, id string, request SourceWri
 			domain.KindInvalid,
 			"invalid_wav",
 			"wav_base64",
-			"payload must be a RIFF/WAVE file containing 16-bit integer PCM with one or two channels",
+			"payload must be a RIFF/WAVE file containing 16-bit or 24-bit integer PCM, or 32-bit IEEE float, with one or two channels",
 			decodeErr,
 		)
 	}
@@ -59,6 +59,7 @@ func (s *Service) CreateSource(ctx context.Context, id string, request SourceWri
 		SampleRate:    info.SampleRate,
 		Channels:      info.Channels,
 		BitsPerSample: info.BitsPerSample,
+		SampleFormat:  info.SampleFormat,
 		FrameCount:    info.FrameCount,
 	}
 	if err := domain.ValidateSourceFacts("source", facts); err != nil {
@@ -73,6 +74,7 @@ func (s *Service) CreateSource(ctx context.Context, id string, request SourceWri
 		SampleRate:    info.SampleRate,
 		Channels:      info.Channels,
 		BitsPerSample: info.BitsPerSample,
+		SampleFormat:  info.SampleFormat,
 		FrameCount:    info.FrameCount,
 		DurationMS:    durationMilliseconds(info.FrameCount, info.SampleRate),
 		PeakDBFS:      measurements.PeakDBFS,

@@ -59,11 +59,12 @@ type SourceWriteRequest struct {
 }
 
 type TimelineWriteRequest struct {
-	Name           string                `json:"name"`
-	SampleRate     int                   `json:"sample_rate"`
-	OutputChannels int                   `json:"output_channels"`
-	TargetPeakDBFS float64               `json:"target_peak_dbfs"`
-	Spans          []domain.TimelineSpan `json:"spans"`
+	Name                string                `json:"name"`
+	SampleRate          int                   `json:"sample_rate"`
+	OutputChannels      int                   `json:"output_channels"`
+	OutputBitsPerSample int                   `json:"output_bits_per_sample"`
+	TargetPeakDBFS      float64               `json:"target_peak_dbfs"`
+	Spans               []domain.TimelineSpan `json:"spans"`
 }
 
 type RenderWriteRequest struct {
